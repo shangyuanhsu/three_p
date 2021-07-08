@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            height: 100vh;
+        }
+
+        #show_three {
+            width: 100%;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <canvas id="show_three"></canvas>
+    </div>
+
+
+    <script src="https://threejsfundamentals.org/threejs/resources/threejs/r103/three.min.js"></script>
+    <script src="https://threejsfundamentals.org/threejs/resources/threejs/r103/js/controls/OrbitControls.js"></script>
+    <script src="https://threejsfundamentals.org/threejs/resources/threejs/r103/js/loaders/LoaderSupport.js"></script>
+    <script src="https://threejsfundamentals.org/threejs/resources/threejs/r103/js/loaders/OBJLoader2.js"></script>
+    <script src="https://threejsfundamentals.org/threejs/resources/threejs/r103/js/loaders/MTLLoader.js"></script>
+
+</body>
+<script>
+
+    const main = () => {
+        // 放到canvas裡
+        const canvas = document.querySelector('#show_three');
+
+        // 渲染器
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas });
+
+        // 這幾個是初始化一個相機的基本參數
+        // 參數1. 垂直相機的視野, 在視野以外的東西不會被選染製畫面
+        // 參數2. 相機可以看到的視野外觀比例，注意它是一個寬除高的值
+        // 參數3. 接近相機的平片, 當物件比此值更靠近畫面時, 該物件不被渲染
+        // 參數4. 遠相機的平面, 當物件與相機的距離大於此值時, 該物件不被渲染
+        const fov = 45;  // 相機的垂直視野
+        const aspect = 2;  // 相機的外觀比例
+        const near = 0.1; // 接近的相機視體平面距離值
+        const far = 100; // 遠的相機視體平面距離值
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far); //相機要用的
+        camera.position.set(0, 10, 20); // 相機的位置
+
+        // 軌道控制
+        const controls = new THREE.OrbitControls(camera, canvas);// (要控制的相機,用於事件偵聽器的 HTML 元素)
+        controls.target.set(0, 5, 0);// 控件的焦點
+        controls.update();// 更新控件
+
+        //創建場景
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('black');// 背景
+
+
+        {
+            const skyColor = 0xB1E1FF;  // light blue
+            const groundColor = 0xB97A20;  // brownish orange
+            const intensity = 1;
+            //半球光
+            const light = new THREE.HemisphereLight(skyColor, groundColor, intensity);
+            //((可选参数) 天空中发出光线的颜色,地面发出光线的颜色,用於可視化燈光的網格的大小,(可选参数) 光照强度)
+            scene.add(light);
+        }
+
+        {
+            const color = 0xFFFFFF;
+            const intensity = 1;
+            //定向光
+            const light = new THREE.DirectionalLight(color, intensity);
+            //(燈光的十六進制顏色,燈光強度/強度的數值)
+            light.position.set(5, 10, 2);
+            scene.add(light);
+            scene.add(light.target);
+        }
+
+        const frameArea = (sizeToFitOnScreen, boxSize, boxCenter, camera) => {
+            const halfSizeToFitOnScreen = sizeToFitOnScreen * 0.5;
+            const halfFovY = THREE.Math.degToRad(camera.fov * .5);
+            const distance = halfSizeToFitOnScreen / Math.tan(halfFovY);
+            // 計算指向相機現在方向的單位向量
+            // 在從盒子中心開始的 xz 平面中
+            const direction = (new THREE.Vector3())
+                .subVectors(camera.position, boxCenter)
+                .multiply(new THREE.Vector3(1, 0, 1))
+                .normalize();
+
+            // move the camera to a position distance units way from the center
+            // in whatever direction the camera was from the center already
+            camera.position.copy(direction.multiplyScalar(distance).add(boxCenter));
+
+            // 將相機移動到距離中心單位距離的位置
+            // 將包含該盒子
+            camera.near = boxSize / 100;
+            camera.far = boxSize * 100;
+
+            camera.updateProjectionMatrix();
+
+            // 將相機指向盒子的中心
+            camera.lookAt(boxCenter.x, boxCenter.y, boxCenter.z);
+        }
+
+        {
+            const objLoader = new THREE.OBJLoader2();
+            objLoader.loadMtl('untitled2.mtl', null, (materials) => {
+                objLoader.setMaterials(materials);
+                objLoader.load('untitled2.obj', (event) => {
+                    const root = event.detail.loaderRootNode;
+                    scene.add(root);
+
+                    // 計算包含所有東西的盒子
+                    // from root and below
+                    const box = new THREE.Box3().setFromObject(root);
+
+                    const boxSize = box.getSize(new THREE.Vector3()).length();
+                    const boxCenter = box.getCenter(new THREE.Vector3());
+
+                    // set the camera to frame the box
+                    frameArea(boxSize * 1.2, boxSize, boxCenter, camera);
+
+                    // update the Trackball controls to handle the new size
+                    controls.maxDistance = boxSize * 10;
+                    controls.target.copy(boxCenter);
+                    controls.enableZoom = false;//不能放大縮小
+                    controls.maxPolarAngle = 0;// 不准上下 垂直旋转的角度的上限
+                    controls.minPolarAngle = Math.PI / 2;// 不准上下 垂直旋转的角度的下限
+                    controls.update();
+
+                });
+            });
+        }
+
+        const resizeRendererToDisplaySize = (renderer) => {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        const render = () => {
+
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+            renderer.render(scene, camera);
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+    }
+
+    main();
+
+
+</script>
+
+</html>
